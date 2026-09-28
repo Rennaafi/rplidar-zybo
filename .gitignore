@@ -1,0 +1,32 @@
+# Vivado (hw/build_hw.tcl regenerates everything below)
+hw/vivado_proj/
+hw/sim_out/
+hw/*.xsa
+hw/*.bit
+hw/*.rpt
+*.jou
+*.log
+*.str
+*.pb
+*.wdb
+.Xil/
+NA/
+vivado*.backup.jou
+vivado*.backup.log
+dfx_runtime.txt
+
+# Vitis (sw/build_sw.py regenerates the workspace)
+sw/vitis_ws/
+_ide/
+.metadata/
+.settings/
+*.wsdata/
+*.rigel_lopper*/
+vitis-comp.json.bak
+
+# Host builds / Python
+*.exe
+*.o
+__pycache__/
+*.pyc
+pc/selftest_view.png
