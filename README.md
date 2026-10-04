@@ -46,7 +46,7 @@ python pc\lidar_view.py --bridge COM5 --source COM7    :: real lidar (USB adapte
 | Fake room (900 samples/s) | ~5.4 Hz, 163 pts/rev, 0 overruns; every injected glitch byte resynced |
 | Real RPLIDAR A1 (~2000 samples/s, the console's limit) | ~6.8 Hz, ~290 pts/rev, 0 overruns, 0 resyncs over 400+ revolutions |
 
-Fake source (4 x 3 m room, box circling) | Real lidar:
+Top: fake source (4 x 3 m room, box circling). Bottom: real lidar.
 
 ![Fake source](media/bridge_fake_source.png)
 ![Real lidar](media/bridge_real_lidar.png)
