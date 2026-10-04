@@ -24,6 +24,11 @@
 #include "sleep.h"
 #include "lidar_parse.h"
 
+// Stage 1 "fake" build: 1 = take the scan bytes from the console UART (sent
+// by pc/lidar_view.py --bridge) instead of the lidar UART. No handshake, no
+// motor, no keys; frames are always on. Set back to 0 for the real lidar.
+#define FAKE_SRC 0
+
 #ifdef SDT
 #include "xiltimer.h"      // 2023.2+ System Device Tree flow
 #else
@@ -182,6 +187,9 @@ static void lidar_rx_reset(void) {
 // Returns a byte, or -1 if the FIFO is empty. Also counts overruns
 // (reading the status register clears the error bits).
 static int lidar_getc(void) {
+#if FAKE_SRC
+    return con_getc();
+#endif
     u32 st = XUartLite_GetStatusReg(LIDAR_UART_BASE);
     if (st & XUL_SR_OVERRUN_ERROR) {
         lidar_overruns++;
@@ -302,6 +310,11 @@ static int lidar_health(void) {
 
 // Full bring-up: info, health (reset on error), SCAN. Retries forever.
 static void lidar_start(void) {
+#if FAKE_SRC
+    con_puts("FAKE source: scan bytes come from the console UART\r\n");
+    leds_set(LED_SCANNING);
+    return;
+#endif
     for (int attempt = 1;; attempt++) {
         leds_set(0);
         lidar_rx_count = 0;
@@ -448,9 +461,13 @@ int main(void) {
     print_help();
     con_flush();
 
+#if !FAKE_SRC
     motor_set(DUTY_DEFAULT);
     con_puts("Motor on, waiting 2 s for speed to settle\r\n");
     wait_ms(2000);
+#else
+    frames_on = 1;
+#endif
 
     lidar_start();
     lidar_parser_init(&parser);
@@ -490,11 +507,13 @@ int main(void) {
 
         con_pump();
 
+#if !FAKE_SRC   // in the fake build the console UART carries scan bytes, not keys
         int c = con_getc();
         if (c >= 0) {
             handle_key(c, &parser);
             last_node = now_ticks();
         }
+#endif
 
         if (motor_duty && ticks_to_ms(now_ticks() - last_node) > NO_DATA_TIMEOUT_MS) {
             con_puts("No scan data for 1.5 s, restarting\r\n");

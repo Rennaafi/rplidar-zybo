@@ -16,6 +16,8 @@ polar plot.
 | `motor_pwm` testbench | ✅ 7/7 duty values pass in xsim |
 | Parser (`lidar_parse.c`) | ✅ 11/11 host tests pass |
 | Bare-metal app | ✅ Runs on the Zybo; UART Lite verified with a JE1↔JE2 loopback |
+| Fake-source pipeline (`FAKE_SRC=1`, `lidar_view.py --bridge`) | ✅ Working on hardware: ~5.4 Hz, 163 pts/rev, 0 overruns, every injected glitch byte resynced |
+| Real lidar → laptop → Zybo parser → viewer (`--bridge COMz --source COMx`) | ✅ Working on hardware: ~6.8 Hz, ~290 pts/rev, 0 overruns, 0 resyncs over 400+ revs |
 | Lidar ↔ Zybo data link | ⏳ In progress: lidar connector pin mapping being confirmed |
 
 Stage 1 on real hardware (lidar through its USB adapter):
@@ -25,6 +27,29 @@ Stage 1 on real hardware (lidar through its USB adapter):
 Zybo UART loopback (JE2 wired to JE1; the app receives its own `A5 50` command):
 
 ![Zybo loopback](media/zybo_uart_loopback.png)
+
+## Bring-up without the lidar wiring: the console bridge
+
+While the lidar connector pinout is unconfirmed, the scan bytes reach the Zybo
+through its USB console instead of the PL UART. Build with `#define FAKE_SRC 1`
+in `sw/src/main.c`; the Zybo then parses bytes from the console UART and
+streams one `F` frame per revolution back to the viewer. Set it to 0 for the
+real lidar on the PL UART.
+
+```bat
+python pc\lidar_view.py --bridge COM5                  :: software lidar -> Zybo -> plot
+python pc\lidar_view.py --bridge COM5 --source COM7    :: real lidar (USB adapter) -> Zybo -> plot
+```
+
+| Source | Result |
+|---|---|
+| Fake room (900 samples/s) | ~5.4 Hz, 163 pts/rev, 0 overruns; every injected glitch byte resynced |
+| Real RPLIDAR A1 (~2000 samples/s, the console's limit) | ~6.8 Hz, ~290 pts/rev, 0 overruns, 0 resyncs over 400+ revolutions |
+
+Fake source (4 x 3 m room, box circling) | Real lidar:
+
+![Fake source](media/bridge_fake_source.png)
+![Real lidar](media/bridge_real_lidar.png)
 
 ## Hardware
 

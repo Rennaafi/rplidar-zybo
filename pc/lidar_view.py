@@ -3,6 +3,8 @@
   python lidar_view.py --lidar COM5    # Stage 1: lidar on the USB-TTL adapter
   python lidar_view.py --zybo COM7     # Stage 2B: Zybo console port (app streams 'F' frames)
   python lidar_view.py --fake          # software lidar, no hardware needed
+  python lidar_view.py --bridge COM7   # Stage 1: fake lidar -> Zybo (FAKE_SRC build) -> plot
+  python lidar_view.py --bridge COM7 --source COM5   # Stage 2: real lidar on COM5 -> Zybo -> plot
 
 Keys in the plot window (Zybo mode): + / - motor duty, m motor on/off, r restart scan.
 Close the window or Ctrl+C to quit.
@@ -78,9 +80,37 @@ def parse_frame(line):
     return angles, dists, title
 
 
-def zybo_reader(ser, latest, stop_evt):
+def bridge_pump(ser, stop_evt, source=None):
+    """Feed scan bytes to the Zybo console UART (FAKE_SRC build).
+
+    source = a real lidar's serial port (Stage 2), or None for the software lidar."""
+    if source:
+        src = rp.open_lidar_port(source, timeout=0.05)
+        rp.send(src, rp.CMD_STOP)
+        time.sleep(0.1)
+        src.reset_input_buffer()
+        print("Lidar source: scan descriptor len=%d type=0x%02X" % rp.start_scan(src))
+    else:
+        from fake_lidar import FakeLidar
+        src = FakeLidar(timeout=0.05)
+        src.SAMPLES_PER_SEC = 900   # ~4.5 kB/s up: the 115200 console must carry it
+        src.write(bytes([0xA5, rp.CMD_SCAN]))
+        src.read(7)                 # drop the scan descriptor, the Zybo has no handshake here
+    try:
+        while not stop_evt.is_set():
+            data = src.read(src.in_waiting or 1) if source else src.read(64)
+            if data:
+                ser.write(data)
+    finally:
+        if source:
+            rp.send(src, rp.CMD_STOP)
+            src.close()
+
+
+def zybo_reader(ser, latest, stop_evt, keys=True):
     """Read the Zybo console: 'F' frames go to the plot, everything else is printed."""
-    ser.write(b"F")   # frames on
+    if keys:
+        ser.write(b"F")   # frames on
     buf = b""
     try:
         while not stop_evt.is_set():
@@ -98,7 +128,8 @@ def zybo_reader(ser, latest, stop_evt):
         latest.error = str(e)
     finally:
         try:
-            ser.write(b"x")   # frames off, console is readable again in PuTTY
+            if keys:
+                ser.write(b"x")   # frames off, console is readable again in PuTTY
         except Exception:
             pass
 
@@ -108,7 +139,9 @@ def main():
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--lidar", metavar="PORT", help="lidar on a USB-TTL adapter")
     src.add_argument("--zybo", metavar="PORT", help="Zybo USB-UART console port")
+    src.add_argument("--bridge", metavar="PORT", help="fake lidar -> Zybo console port (FAKE_SRC build)")
     src.add_argument("--fake", action="store_true", help="software lidar")
+    ap.add_argument("--source", metavar="PORT", help="with --bridge: real lidar port instead of the fake one")
     ap.add_argument("--range", type=float, default=4000, help="plot radius in mm (default 4000)")
     args = ap.parse_args()
 
@@ -123,23 +156,28 @@ def main():
         ser, reader = FakeLidar(timeout=0.2), lidar_reader
     else:
         import serial
-        port = args.lidar or args.zybo
+        port = args.lidar or args.zybo or args.bridge
         try:
             ser = (rp.open_lidar_port(port, timeout=0.2) if args.lidar
                    else serial.Serial(port, 115200, timeout=0.2))
         except Exception as e:
             sys.exit(f"Cannot open {port}: {e}")
         reader = lidar_reader if args.lidar else zybo_reader
+        if args.bridge:
+            reader = lambda s, l, e: zybo_reader(s, l, e, keys=False)  # noqa: E731
 
     latest, stop_evt = Latest(), threading.Event()
     th = threading.Thread(target=reader, args=(ser, latest, stop_evt), daemon=True)
     th.start()
+    if args.bridge:
+        threading.Thread(target=bridge_pump, args=(ser, stop_evt, args.source), daemon=True).start()
 
     fig = plt.figure(figsize=(7, 7))
     ax = fig.add_subplot(projection="polar")
     ax.set_theta_zero_location("N")   # 0 deg = lidar front, pointing up
     ax.set_theta_direction(-1)        # RPLIDAR angles grow clockwise
-    ax.set_rmax(args.range)
+    ax.set_ylim(0, args.range)
+    ax.set_autoscale_on(False)        # scatter would otherwise shrink the radius to ~0
     ax.set_rlabel_position(135)
     sc = ax.scatter([], [], s=6, c=[], cmap="viridis_r", vmin=0, vmax=args.range)
     ax.plot([0], [0], marker="^", color="red", markersize=10)
