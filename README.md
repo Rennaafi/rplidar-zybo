@@ -18,7 +18,8 @@ polar plot.
 | Bare-metal app | ✅ Runs on the Zybo; UART Lite verified with a JE1↔JE2 loopback |
 | Fake-source pipeline (`FAKE_SRC=1`, `lidar_view.py --bridge`) | ✅ Working on hardware: ~5.4 Hz, 163 pts/rev, 0 overruns, every injected glitch byte resynced |
 | Real lidar → laptop → Zybo parser → viewer (`--bridge COMz --source COMx`) | ✅ Working on hardware: ~6.8 Hz, ~290 pts/rev, 0 overruns, 0 resyncs over 400+ revs |
-| Lidar ↔ Zybo data link | ⏳ In progress: lidar connector pin mapping being confirmed |
+| Lidar ↔ Zybo data link (lidar wired straight to Pmod JE, no PC in the data path) | ✅ Working on hardware: ~7.1 Hz, ~280 pts/rev, 0 overruns over 60 revs; later duty sweep ran 500+ revs with 0 overruns and no `sync` change |
+| Motor control (MOTOCTL on JE3) | ✅ Duty 40–255 sweep and motor off verified |
 
 Stage 1 on real hardware (lidar through its USB adapter):
 
@@ -28,9 +29,44 @@ Zybo UART loopback (JE2 wired to JE1; the app receives its own `A5 50` command):
 
 ![Zybo loopback](media/zybo_uart_loopback.png)
 
+## Direct link: lidar wired to Pmod JE
+
+![Hardware setup](media/hardware_setup.jpg)
+
+Zybo console (PuTTY, COM5) with the lidar on the PL UART, duty 200 at the time:
+about 7.1 Hz, ~280 pts/rev, `ovr 0`.
+
+![Direct link console](media/zybo_direct_console.png)
+
+Live polar plot from the Zybo (`python pc\lidar_view.py --zybo COM5`):
+
+![Direct link plot](media/zybo_direct_plot.png)
+
+### Motor duty sweep
+
+Measured with the live `+`/`-` keys (settled values, `ovr 0` throughout). The
+sample rate is fixed at about 1980 samples/s (rate x pts/rev is constant), so
+the duty only trades scan rate against angular resolution. Above ~240 the
+speed saturates. `DUTY_DEFAULT` is **120**, a mid-range value with 1.15°
+resolution that still has headroom in both directions.
+
+| Duty | Rate | Pts/rev | Angular step |
+|---|---|---|---|
+| 40 | 4.75 Hz | 417 | 0.86° |
+| 60 | 5.18 Hz | 382 | 0.94° |
+| 80 | 5.61 Hz | 352 | 1.02° |
+| **120** | **6.35 Hz** | **312** | **1.15°** |
+| 160 | 6.92 Hz | 286 | 1.26° |
+| 200 | 7.30 Hz | 271 | 1.33° |
+| 240 | 7.53 Hz | 263 | 1.37° |
+| 255 | 7.53 Hz | 263 | 1.37° |
+
+Duty 0 stops the motor: the rate fell 7.44 → 3.68 Hz within about a second as
+it coasted down.
+
 ## Bring-up without the lidar wiring: the console bridge
 
-While the lidar connector pinout is unconfirmed, the scan bytes reach the Zybo
+Before the lidar was wired to the PL, the scan bytes reached the Zybo
 through its USB console instead of the PL UART. Build with `#define FAKE_SRC 1`
 in `sw/src/main.c`; the Zybo then parses bytes from the console UART and
 streams one `F` frame per revolution back to the viewer. Set it to 0 for the

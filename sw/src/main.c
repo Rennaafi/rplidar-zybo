@@ -70,7 +70,7 @@
 #endif
 #endif
 
-#define DUTY_DEFAULT        200     // ~80 %, same as the guide
+#define DUTY_DEFAULT        120     // ~47 %: 6.35 Hz, 312 pts/rev (sweep in README)
 #define DUTY_STEP           10
 #define NO_DATA_TIMEOUT_MS  1500    // restart the scan if the stream stops
 #define FRONT_NEAR_MM       1000    // LD2
