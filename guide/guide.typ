@@ -818,6 +818,68 @@ xsdb run_on_board.tcl
 You should see the banner, `Motor on`, the Model and Health lines, the scan header, and then one `rev ...` line for every turn. Now press `+` and `-` in PuTTY and watch the `Hz` and `pts` columns change.
 ]
 
+== The same steps with the Vivado and Vitis GUI
+
+The commands above hide what the tools do. If you prefer the mouse, or you want to see each block appear, use the windows instead. This is written for *Vivado and Vitis 2025.1*. Other versions move the menus around, but the values stay the same. Work in a folder *without spaces* in its path, for example `D:\lidar_build`.
+
+#feel[
+  If you only want to see it run, skip the Vivado part. The repository already contains `hw/lidar_zybo.xsa` and `hw/lidar_zybo.bit`. Start at "Software in Vitis".
+]
+
+=== Hardware in Vivado, the quick way
+
++ Open Vivado. Choose *Tools → Run Tcl Script* and pick `hw/build_hw.tcl`.
++ Wait a few minutes. It builds the project and writes `lidar_zybo.xsa` and `lidar_zybo.bit` in `hw/`.
++ If it says the Zybo Z7-10 board files are missing, install the Digilent board files first (*Tools → Settings → Board Repository*).
+
+=== Hardware in Vivado, building it yourself
+
+*Project.* Create a project named `lidar_zybo`. Choose the *Boards* tab and pick *Zybo Z7-10*. Add `hw/motor_pwm.v` as a design source and `hw/lidar_zybo.xdc` as a constraint file.
+
+*Block design.* Create a block design called `system`, then add the pieces in this order:
+
+#figure(
+  table(
+    columns: (auto, 1fr),
+    align: (left, left),
+    hr,
+    [*Add*], [*Set*],
+    thin,
+    [ZYNQ7 Processing System], [Run Block Automation with _Apply Board Preset_. Then FCLK_CLK0 = 100 MHz, and enable the M_AXI_GP0 interface.],
+    [AXI Uartlite], [Baud rate 115200, 8 data bits, no parity.],
+    [AXI GPIO], [Enable dual channel. Channel 1: all outputs, width 8. Channel 2: all outputs, width 4.],
+    [Module `motor_pwm`], [Right-click the canvas → Add Module. Check `CLK_HZ` = 100000000 and `PWM_HZ` = 24000.],
+    hr,
+  ),
+  caption: [What to add to the block design and the values to set.],
+)
+
+Now click *Run Connection Automation* and accept all. Vivado adds the AXI interconnect and the reset block for you. Then finish the wiring by hand:
+
+- Make the UART pin of the Uartlite *external* and name it `lidar_uart`. Vivado makes the `lidar_uart_rxd` and `lidar_uart_txd` ports that the constraint file expects.
+- Create an output port `motoctl` and connect it to the `pwm` pin of `motor_pwm_0`.
+- Create an output port `leds` (width 4, `[3:0]`) and connect it to the GPIO channel 2 output.
+- Connect `FCLK_CLK0` to the `clk` pin of `motor_pwm_0`, the reset block's `peripheral_aresetn` to `rst_n`, and the GPIO channel 1 output to `duty`.
+- In the *Address Editor*, set the Uartlite to `0x42C00000` and the GPIO to `0x41200000` (64K each). The C code falls back to these numbers, so keep them.
+
+Press *Validate Design* (F6). Then right-click `system` in the Sources window → *Create HDL Wrapper* → let Vivado manage it, and set the wrapper as top. Click *Generate Bitstream*. When it finishes, check that the worst setup slack is positive (our build gave about +2.4 ns). Finally choose *File → Export → Export Hardware*, tick *Include bitstream*, and save `lidar_zybo.xsa`. Copy the `.bit` file from the `impl_1` run folder next to it.
+
+=== Software in Vitis
+
++ Start Vitis and pick a workspace folder (no spaces).
++ *File → New Component → Platform*. Name it `lidar_platform`, use your `lidar_zybo.xsa`, operating system *standalone*, processor `ps7_cortexa9_0`. Leave _Generate DTB_ off. Build it.
++ *File → New Component → Application*. Name it `lidar_app`, pick that platform and the domain `standalone_ps7_cortexa9_0`.
++ Copy `main.c`, `lidar_parse.c` and `lidar_parse.h` from `sw/src/` into the application's `src` folder. Build it. You get `lidar_app.elf`.
++ If the platform build stops with a missing `scugic` error, open a terminal in the `gen_bsp` folder under the BSP and run `cmake .` and then `ninja`. Rebuild the application.
+
+=== Run it
+
+Open the serial terminal first (115200 on the Zybo's COM port), with JP5 on JTAG. The most reliable way to program the board is still the script: `xsdb run_on_board.tcl` from a Vitis `cmd` shell. In the GUI you can use *Program Device* for the `.bit` and then *Run* the application. If the console stays empty, use the script. The IDE's Run button did not always run `ps7_init`, and without it the processor cannot reach the PL.
+
+#feel[
+  We tested the settings above on the board through the scripts. We did not click through every menu in a fresh install, so a menu name may differ a little. Trust the values in the table, and tell us if a menu is different.
+]
+
 == Problems we had (so you can avoid them)
 
 - *Do not build in a folder with a space in the path.* Vitis could not create the platform in such a path. We built in a copy under `D:\lidar_build`.
