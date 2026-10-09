@@ -127,13 +127,15 @@ LD2 object < 1 m in front, LD3 object < 30 cm in front.
 
 **Parser ([`sw/src/lidar_parse.c`](sw/src/lidar_parse.c))**
 The protocol's sync check is only 2 bits (S ≠ S̄, C = 1), so random bytes pass
-it about 1 time in 6. The host test showed the plain rule turning 100 kB of
+it about 1 time in 4 (1 in 5.7 once the angle check is added). The host test showed the plain rule turning 100 kB of
 noise into thousands of fake revolutions. The parser therefore also rejects
 angles ≥ 360°, needs 3 good nodes in a row before it trusts the alignment, and
 drops "revolutions" shorter than 100 points. The same noise now gives 0
 revolutions.
 
 ## Build and run
+
+Prefer the GUI? See [docs/GUI_WALKTHROUGH.md](docs/GUI_WALKTHROUGH.md) for the same flow in Vivado and Vitis.
 
 ```bat
 :: 1. hardware (from the Vivado 2025.1 settings64.bat shell)

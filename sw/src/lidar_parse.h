@@ -10,7 +10,7 @@
 #define LIDAR_BINS 360
 
 // The protocol's sync check is only 2 bits (S != S-bar, C == 1), so random
-// bytes pass it ~1 time in 6. Require this many good nodes in a row before
+// bytes pass it ~1 time in 4 (~1 in 5.7 with the angle check). Require this many good nodes in a row before
 // trusting the alignment, and ignore "revolutions" shorter than the minimum
 // (a real one has ~200-1000 points depending on motor speed).
 #define LIDAR_LOCK_NODES   3
